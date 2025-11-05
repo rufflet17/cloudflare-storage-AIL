@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R2 File Uploader</title>
+    <!-- CSS (スタイルシート) をここに内包 -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-color: #f4f4f5;
+            color: #18181b;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        .auth-section, .main-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .hidden {
+            display: none;
+        }
+        input[type="password"], input[type="file"], button {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #d4d4d8;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #005bb5;
+        }
+        button:disabled {
+            background-color: #a1a1aa;
+            cursor: not-allowed;
+        }
+        #file-list {
+            list-style: none;
+            padding: 0;
+        }
+        #file-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid #e4e4e7;
+        }
+        #file-list li:last-child {
+            border-bottom: none;
+        }
+        .file-actions button {
+            width: auto;
+            padding: 0.3rem 0.8rem;
+            font-size: 0.9rem;
+            margin-left: 0.5rem;
+        }
+        #status {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        .link-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            border: 1px solid #d4d4d8;
+        }
+        .link-popup input {
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>R2 File Manager</h1>
+
+        <!-- 認証セクション -->
+        <div id="auth-section" class="auth-section">
+            <p>アクセスするにはパスワードを入力してください。</p>
+            <input type="password" id="password-input" placeholder="Password">
+            <button id="login-button">ログイン</button>
+            <p id="auth-status" style="color: red;"></p>
+        </div>
+
+        <!-- メインコンテンツ (認証後に表示) -->
+        <div id="main-section" class="main-section hidden">
+            <!-- ファイルアップロード -->
+            <div>
+                <h2>ファイルをアップロード</h2>
+                <input type="file" id="file-input">
+                <button id="upload-button" disabled>アップロード</button>
+                <div id="status"></div>
+            </div>
+
+            <!-- ファイル一覧 -->
+            <div>
+                <h2>保存されているファイル</h2>
+                <ul id="file-list">
+                    <!-- ファイルがここに動的に追加されます -->
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ダウンロードリンク表示用のポップアップ (最初は非表示) -->
+    <div id="popup-overlay" class="overlay hidden"></div>
+    <div id="link-popup" class="link-popup hidden">
+        <h3>ダウンロードリンク</h3>
+        <p>このリンクは1時間有効です。</p>
+        <input type="text" id="shareable-link" readonly>
+        <button id="copy-link-button">クリップボードにコピー</button>
+        <button id="close-popup-button">閉じる</button>
+    </div>
+
+
+    <!-- JavaScript をここに内包 -->
+    <script>
+        // DOM要素の取得
+        const authSection = document.getElementById('auth-section');
+        const mainSection = document.getElementById('main-section');
+        const passwordInput = document.getElementById('password-input');
+        const loginButton = document.getElementById('login-button');
+        const authStatus = document.getElementById('auth-status');
+        
+        const fileInput = document.getElementById('file-input');
+        const uploadButton = document.getElementById('upload-button');
+        const statusDiv = document.getElementById('status');
+        const fileListUl = document.getElementById('file-list');
+
+        const popupOverlay = document.getElementById('popup-overlay');
+        const linkPopup = document.getElementById('link-popup');
+        const shareableLinkInput = document.getElementById('shareable-link');
+        const copyLinkButton = document.getElementById('copy-link-button');
+        const closePopupButton = document.getElementById('close-popup-button');
+        
+        // 認証トークンをセッションストレージに保存
+        let authToken = sessionStorage.getItem('authToken');
+
+        // 認証チェック
+        if (authToken) {
+            authSection.classList.add('hidden');
+            mainSection.classList.remove('hidden');
+            fetchFileList();
+        }
+
+        // --- イベントリスナー ---
+        
+        loginButton.addEventListener('click', async () => {
+            const password = passwordInput.value;
+            if (!password) {
+                authStatus.textContent = 'パスワードを入力してください。';
+                return;
+            }
+            
+            // バックエンドに認証を試みる (ここでは単純化のため、ファイル一覧取得を試みる)
+            try {
+                const response = await fetch('/api/list-files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                if (response.ok) {
+                    authToken = password; // 簡易的なトークンとしてパスワードを使用
+                    sessionStorage.setItem('authToken', authToken);
+                    authSection.classList.add('hidden');
+                    mainSection.classList.remove('hidden');
+                    authStatus.textContent = '';
+                    await fetchFileList();
+                } else {
+                    authStatus.textContent = '認証に失敗しました。';
+                    sessionStorage.removeItem('authToken');
+                }
+            } catch (error) {
+                 authStatus.textContent = 'エラーが発生しました。';
+            }
+        });
+        
+        fileInput.addEventListener('change', () => {
+            uploadButton.disabled = fileInput.files.length === 0;
+        });
+
+        uploadButton.addEventListener('click', handleUpload);
+        
+        closePopupButton.addEventListener('click', closePopup);
+        copyLinkButton.addEventListener('click', copyLinkToClipboard);
+
+
+        // --- 関数 ---
+
+        /**
+         * R2に保存されているファイルの一覧を取得して表示する
+         */
+        async function fetchFileList() {
+            if (!authToken) return;
+            
+            statusDiv.textContent = 'ファイルリストを読み込み中...';
+            fileListUl.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/list-files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: authToken })
+                });
+
+                if (!response.ok) {
+                    throw new Error('ファイルリストの取得に失敗しました。');
+                }
+
+                const { files } = await response.json();
+
+                if (files.length === 0) {
+                    fileListUl.innerHTML = '<li>ファイルはありません。</li>';
+                } else {
+                    files.forEach(file => {
+                        const li = document.createElement('li');
+                        
+                        const fileNameSpan = document.createElement('span');
+                        fileNameSpan.textContent = file.key;
+                        
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.className = 'file-actions';
+
+                        const downloadBtn = document.createElement('button');
+                        downloadBtn.textContent = 'ダウンロード';
+                        downloadBtn.onclick = () => handleDownload(file.key);
+
+                        const linkBtn = document.createElement('button');
+                        linkBtn.textContent = 'リンク作成';
+                        linkBtn.onclick = () => generateShareLink(file.key);
+                        
+                        actionsDiv.appendChild(downloadBtn);
+                        actionsDiv.appendChild(linkBtn);
+                        
+                        li.appendChild(fileNameSpan);
+                        li.appendChild(actionsDiv);
+                        fileListUl.appendChild(li);
+                    });
+                }
+                statusDiv.textContent = '';
+
+            } catch (error) {
+                statusDiv.textContent = `エラー: ${error.message}`;
+                // 認証エラーならログイン画面に戻す
+                if (error.message.includes('401') || error.message.includes('403')) {
+                    sessionStorage.removeItem('authToken');
+                    location.reload();
+                }
+            }
+        }
+
+        /**
+         * ファイルのアップロード処理
+         */
+        async function handleUpload() {
+            const file = fileInput.files[0];
+            if (!file || !authToken) return;
+
+            statusDiv.textContent = '署名付きURLをリクエスト中...';
+            uploadButton.disabled = true;
+
+            try {
+                // 1. バックエンドに署名付きURLをリクエスト
+                const response = await fetch('/api/generate-upload-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: authToken,
+                        filename: file.name,
+                        contentType: file.type
+                    })
+                });
+
+                if (!response.ok) throw new Error('署名付きURLの取得に失敗しました。');
+                const { url } = await response.json();
+
+                // 2. 取得したURLにファイルを直接PUTリクエストでアップロード
+                statusDiv.textContent = 'ファイルをアップロード中...';
+                const uploadResponse = await fetch(url, {
+                    method: 'PUT',
+                    body: file,
+                    headers: { 'Content-Type': file.type }
+                });
+
+                if (!uploadResponse.ok) throw new Error('ファイルのアップロードに失敗しました。');
+
+                statusDiv.textContent = 'アップロードが完了しました！';
+                fileInput.value = ''; // ファイル選択をリセット
+                await fetchFileList(); // ファイルリストを更新
+
+            } catch (error) {
+                statusDiv.textContent = `エラー: ${error.message}`;
+            } finally {
+                uploadButton.disabled = false;
+            }
+        }
+        
+        /**
+         * ファイルのダウンロード処理
+         */
+        async function handleDownload(filename) {
+            if (!authToken) return;
+            statusDiv.textContent = `「${filename}」のダウンロードリンクを生成中...`;
+            
+            try {
+                const url = await getSignedDownloadUrl(filename);
+                // 新しいタブでダウンロードを開始
+                window.open(url, '_blank');
+                statusDiv.textContent = '';
+            } catch (error) {
+                statusDiv.textContent = `エラー: ${error.message}`;
+            }
+        }
+
+        /**
+         * 共有用のダウンロードリンクを生成してポップアップで表示
+         */
+        async function generateShareLink(filename) {
+            if (!authToken) return;
+            statusDiv.textContent = `「${filename}」の共有リンクを生成中...`;
+
+            try {
+                const url = await getSignedDownloadUrl(filename);
+                shareableLinkInput.value = url;
+                popupOverlay.classList.remove('hidden');
+                linkPopup.classList.remove('hidden');
+                statusDiv.textContent = '';
+            } catch (error) {
+                statusDiv.textContent = `エラー: ${error.message}`;
+            }
+        }
+
+        /**
+         * バックエンドから署名付きダウンロードURLを取得する共通関数
+         */
+        async function getSignedDownloadUrl(filename) {
+            const response = await fetch('/api/generate-download-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: authToken, filename })
+            });
+            if (!response.ok) throw new Error('ダウンロードURLの取得に失敗しました。');
+            const { url } = await response.json();
+            return url;
+        }
+
+        function closePopup() {
+            popupOverlay.classList.add('hidden');
+            linkPopup.classList.add('hidden');
+        }
+
+        function copyLinkToClipboard() {
+            shareableLinkInput.select();
+            document.execCommand('copy');
+            copyLinkButton.textContent = 'コピーしました！';
+            setTimeout(() => {
+                copyLinkButton.textContent = 'クリップボードにコピー';
+            }, 2000);
+        }
+
+    </script>
+</body>
+</html>
