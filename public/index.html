@@ -1,3 +1,8 @@
+### 修正後のフロントエンドコード全体
+
+以下は、上記の修正を適用した `public/index.html` ファイルの全体です。これをコピーして既存のファイルを完全に置き換えてください。
+
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -76,8 +81,6 @@
 
         async function apiCall(action, body) {
             const requestBody = { ...body, password: authToken, action: action };
-            
-            // --- 変更点 --- : POST先を単一のエンドポイントに変更
             const response = await fetch(`/api/endpoint`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -187,7 +190,10 @@
         }
         
         function generateShareLink(filename) {
-            const permanentLink = `${window.location.origin}/api/download/${encodeURIComponent(filename)}`;
+            // ベースURLを固定の本番サイトURLに変更
+            const productionUrl = 'https://cloudflare-storage-ail.pages.dev';
+            const permanentLink = `${productionUrl}/api/download/${encodeURIComponent(filename)}`;
+            
             shareableLinkInput.value = permanentLink;
             popupOverlay.classList.remove('hidden');
             linkPopup.classList.remove('hidden');
