@@ -186,7 +186,7 @@
         
         function generateShareLink(filename) {
             // ベースURLを固定の本番サイトURLに変更
-            const productionUrl = 'https://download-link.pages.dev';
+            const productionUrl = 'https://download.pages.dev';
             const permanentLink = `${productionUrl}/api/download/${encodeURIComponent(filename)}`;
             
             shareableLinkInput.value = permanentLink;
