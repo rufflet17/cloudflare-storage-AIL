@@ -7,6 +7,19 @@ export async function onRequest(context) {
   try {
     const { request } = context;
 
+    // プリフライトリクエスト(OPTIONS)への対応を追加
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204, // No Content
+        headers: {
+          'Access-Control-Allow-Origin': '*', // すべてのオリジンを許可
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type', // 必要に応じてヘッダーを追加
+          'Access-Control-Max-Age': '86400', // プリフライト結果のキャッシュ時間(秒)
+        },
+      });
+    }
+
     // メソッドベースのルーティング
     if (request.method === 'GET') {
       return handleDownload(context);
