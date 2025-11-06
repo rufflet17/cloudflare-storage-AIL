@@ -3,8 +3,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Cloudflare Workers環境でAWS SDKを動作させるための必須ライブラリ
 import { FetchHttpHandler } from "@smithy/fetch-http-handler";
-// --- 変更点 --- : 不要になったため、url-parser-nativeのインポートを削除
-// import { parseUrl } from "@aws-sdk/url-parser-native";
+// --- 変更点 --- : Workers環境で動作するXMLパーサーをインポート
+import { XMLParser } from "fast-xml-parser";
 
 /**
  * 全てのAPIリクエストを処理するエントリーポイント
@@ -14,20 +14,14 @@ export async function onRequest(context) {
     const { request, env, params } = context;
     const action = params.path[params.path.length - 1];
     
-    // POST以外のメソッドは許可しない
     if (request.method !== 'POST') {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
     const body = await request.json();
     
-    // 認証処理は無効化されています
-    /*
-    const { password } = body;
-    if (!password || password !== env.AUTH_PASSWORD) {
-      return new Response('Unauthorized', { status: 403 });
-    }
-    */
+    // --- 変更点 --- : インポートしたXMLパーサーのインスタンスを作成
+    const xmlParser = new XMLParser();
     
     // --- R2クライアントの初期化 (Cloudflare Workers環境向け) ---
     const R2 = new S3Client({
@@ -37,10 +31,11 @@ export async function onRequest(context) {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
-      // Workers環境での動作に必須
       requestHandler: new FetchHttpHandler(),
-      // --- 変更点 --- : エラーの原因となっていた urlParser の設定を削除
-      // urlParser: parseUrl, 
+      // --- 変更点 --- : SDKに、ブラウザ互換でないデフォルトの代わりに、このXMLパーサーを使用するよう指示
+      xmlParser: {
+        parse: xmlParser.parse,
+      },
     });
 
     // --- アクションに応じて処理を振り分け ---
@@ -56,7 +51,6 @@ export async function onRequest(context) {
     }
   } catch (error) {
     console.error(error);
-    // エラーメッセージに加えて、スタックトレースも返すことでより詳細な情報を提供
     const errorMessage = error.stack || error.message;
     return new Response(errorMessage, { status: 500 });
   }
