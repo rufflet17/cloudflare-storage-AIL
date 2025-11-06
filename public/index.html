@@ -49,7 +49,6 @@
     </div>
     <div id="popup-overlay" class="overlay hidden"></div>
     <div id="link-popup" class="link-popup hidden">
-        <!-- --- 変更点 --- : タイトルを永続リンクに変更 -->
         <h3>永続ダウンロードリンク</h3>
         <input type="text" id="shareable-link" readonly>
         <button id="copy-link-button">クリップボードにコピー</button>
@@ -61,7 +60,6 @@
         const passwordInput = document.getElementById('password-input');
         const loginButton = document.getElementById('login-button');
         const authStatus = document.getElementById('auth-status');
-
         const mainSection = document.getElementById('main-section');
         const fileInput = document.getElementById('file-input');
         const uploadButton = document.getElementById('upload-button');
@@ -76,35 +74,29 @@
         
         let authToken = null;
 
-        // --- API呼び出しの共通関数 ---
-        // --- 変更点 --- : actionを引数に取り、エンドポイントを/api/actionsに統一
         async function apiCall(action, body) {
             const requestBody = { ...body, password: authToken, action: action };
-
-            const response = await fetch(`/api/actions`, { // エンドポイントを/api/actionsに固定
+            
+            // --- 変更点 --- : POST先を単一のエンドポイントに変更
+            const response = await fetch(`/api/endpoint`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody) 
             });
+
             if (!response.ok) {
                 const errorText = await response.text();
-                if (response.status === 401) {
-                    throw new Error('パスワードが間違っています。');
-                }
-                if (response.status === 403) { // 本番環境ブロックのエラー
-                    throw new Error('この環境からのAPIアクセスはブロックされています。');
-                }
+                if (response.status === 401) throw new Error('パスワードが間違っています。');
+                if (response.status === 403) throw new Error('この環境からのAPIアクセスはブロックされています。');
                 throw new Error(`APIエラー (ステータス: ${response.status}): ${errorText}`);
             }
             return response.json();
         }
         
-        // --- イベントリスナー ---
         loginButton.addEventListener('click', handleLogin);
         passwordInput.addEventListener('keyup', (event) => {
             if (event.key === 'Enter') handleLogin();
         });
-
         fileInput.addEventListener('change', () => uploadButton.disabled = fileInput.files.length === 0);
         uploadButton.addEventListener('click', handleUpload);
         refreshButton.addEventListener('click', fetchFileList);
@@ -119,7 +111,6 @@
             setTimeout(() => { copyLinkButton.textContent = 'クリップボードにコピー'; }, 2000);
         });
 
-        // --- 関数 ---
         async function handleLogin() {
             const password = passwordInput.value;
             if (!password) {
@@ -130,7 +121,6 @@
             loginButton.disabled = true;
             authToken = password;
             try {
-                // --- 変更点 --- : apiCallの呼び出し方を変更
                 await apiCall('list-files', {});
                 authSection.classList.add('hidden');
                 mainSection.classList.remove('hidden');
@@ -147,7 +137,6 @@
             statusDiv.textContent = 'ファイルリストを読み込み中...';
             fileListUl.innerHTML = '';
             try {
-                // --- 変更点 --- : apiCallの呼び出し方を変更
                 const { files } = await apiCall('list-files', {});
                 if (files.length === 0) {
                     fileListUl.innerHTML = '<li>ファイルはありません。</li>';
@@ -179,7 +168,6 @@
             statusDiv.textContent = 'アップロード用URLをリクエスト中...';
             uploadButton.disabled = true;
             try {
-                // --- 変更点 --- : apiCallの呼び出し方を変更
                 const { url } = await apiCall('generate-upload-url', { filename: file.name, contentType: file.type || 'application/octet-stream' });
                 statusDiv.textContent = 'ファイルをアップロード中...';
                 const uploadResponse = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
@@ -188,7 +176,6 @@
                     const errorText = await uploadResponse.text();
                     throw new Error(`アップロードに失敗しました。ステータス: ${uploadResponse.status}, R2からの応答: ${errorText}`);
                 }
-
                 statusDiv.textContent = 'アップロードが完了しました！';
                 fileInput.value = '';
                 await fetchFileList();
@@ -199,12 +186,8 @@
             }
         }
         
-        // --- 変更点 --- : APIを呼び出さず、永続リンクを直接生成する関数に変更
         function generateShareLink(filename) {
-            // URLの生成: 現在のページのオリジン + /api/download/ + ファイル名
-            // encodeURIComponentでファイル名に特殊文字が含まれていても安全にURLにできる
             const permanentLink = `${window.location.origin}/api/download/${encodeURIComponent(filename)}`;
-            
             shareableLinkInput.value = permanentLink;
             popupOverlay.classList.remove('hidden');
             linkPopup.classList.remove('hidden');

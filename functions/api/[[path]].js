@@ -1,32 +1,75 @@
 import { S3Client, ListObjectsV2Command, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-// Cloudflare Workers環境でAWS SDKを動作させるための必須ライブラリ
 import { FetchHttpHandler } from "@smithy/fetch-http-handler";
 import { XMLParser } from "fast-xml-parser";
 
-/**
- * 全てのAPIリクエストを処理するエントリーポイント
- */
 export async function onRequest(context) {
   try {
-    const { request, env, params } = context;
+    const { request, env } = context;
+    const url = new URL(request.url);
 
-    // --- 変更点：本番環境からのアクセスをブロック ---
+    // --- ルーティング：パスとメソッドで処理を分岐 ---
+    // 1. ダウンロードリンクへのGETリクエストを処理
+    if (url.pathname.startsWith('/api/download/') && request.method === 'GET') {
+      return handleDownload(context);
+    }
+
+    // 2. それ以外のAPIへのPOSTリクエストを処理
+    if (request.method === 'POST') {
+      return handleActions(context);
+    }
+    
+    // 上記以外は404 Not Found
+    return new Response('Not Found', { status: 404 });
+
+  } catch (error) {
+    console.error(error);
+    const errorMessage = error.stack || error.message;
+    return new Response(errorMessage, { status: 500 });
+  }
+}
+
+/**
+ * ダウンロード処理 (GET /api/download/*)
+ */
+async function handleDownload(context) {
+  const { request, env } = context;
+  const url = new URL(request.url);
+  
+  // パスからファイル名を取得
+  const filename = url.pathname.substring('/api/download/'.length);
+  if (!filename) {
+    return new Response('Filename is required.', { status: 400 });
+  }
+
+  const R2 = createR2Client(env);
+  const command = new GetObjectCommand({
+    Bucket: env.R2_BUCKET_NAME_STRING,
+    Key: decodeURIComponent(filename), // URLエンコードされたファイル名をデコード
+  });
+  const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Location': signedUrl,
+    },
+  });
+}
+
+/**
+ * アクション処理 (POST /api/*)
+ */
+async function handleActions(context) {
+    const { request, env } = context;
+
     if (env.CF_PAGES_BRANCH) {
       return new Response('Access from production environment is blocked.', { status: 403 });
     }
-    // --- 変更点ここまで ---
-
-    const action = params.path[params.path.length - 1];
-    
-    if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
 
     const body = await request.json();
+    const action = body.action;
 
-    // パスワード認証
     const secretPassword = env.AUTH_PASSWORD;
     if (!secretPassword) {
       return new Response('Password not configured.', { status: 500 });
@@ -35,38 +78,35 @@ export async function onRequest(context) {
       return new Response('Unauthorized.', { status: 401 });
     }
     
-    const xmlParser = new XMLParser();
-    
-    // R2クライアントの初期化
-    const R2 = new S3Client({
-      region: "auto",
-      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: env.R2_ACCESS_KEY_ID,
-        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-      },
-      requestHandler: new FetchHttpHandler(),
-      xmlParser: {
-        parse: xmlParser.parse,
-      },
-    });
+    const R2 = createR2Client(env);
 
-    // アクションに応じて処理を振り分け
     switch (action) {
       case 'list-files':
         return await handleListFiles(env, R2);
       case 'generate-upload-url':
         return await handleGenerateUploadUrl(env, R2, body);
-      case 'generate-download-url':
-        return await handleGenerateDownloadUrl(env, R2, body);
       default:
-        return new Response('Not Found', { status: 404 });
+        // フロントエンドは/api/actionsにPOSTするので、ここは実質的に使われない
+        return new Response('Action Not Found', { status: 404 });
     }
-  } catch (error) {
-    console.error(error);
-    const errorMessage = error.stack || error.message;
-    return new Response(errorMessage, { status: 500 });
-  }
+}
+
+// --- 共通ヘルパー関数と個別のアクションハンドラ ---
+
+/** S3クライアントを初期化する共通関数 */
+function createR2Client(env) {
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: env.R2_ACCESS_KEY_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    },
+    requestHandler: new FetchHttpHandler(),
+    xmlParser: {
+      parse: new XMLParser().parse,
+    },
+  });
 }
 
 /** ファイル一覧を取得 */
@@ -86,15 +126,6 @@ async function handleGenerateUploadUrl(env, r2, body) {
   const { filename, contentType } = body;
   if (!filename || !contentType) return new Response('Bad Request: filename and contentType are required.', { status: 400 });
   const command = new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME_STRING, Key: filename, ContentType: contentType });
-  const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
-  return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
-}
-
-/** ダウンロード用の署名付きURLを生成 */
-async function handleGenerateDownloadUrl(env, r2, body) {
-  const { filename } = body;
-  if (!filename) return new Response('Bad Request: filename is required.', { status: 400 });
-  const command = new GetObjectCommand({ Bucket: env.R2_BUCKET_NAME_STRING, Key: filename });
   const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
   return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
 }
