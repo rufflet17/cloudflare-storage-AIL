@@ -43,12 +43,27 @@ class R2ApiHandler {
 
     async downloadFile(filename) {
         try {
-            const permanentLink = this.getDownloadLink(filename);
-            const response = await fetch(permanentLink);
-            if (!response.ok) {
-                throw new Error(`ファイルのダウンロードに失敗しました。ステータス: ${response.status}`);
+            // ステップ1: バックエンドのエンドポイントにアクセスして、署名付きURLを取得する
+            const backendApiUrl = this.getDownloadLink(filename);
+            const signedUrlResponse = await fetch(backendApiUrl);
+
+            if (!signedUrlResponse.ok) {
+                throw new Error(`署名付きURLの取得に失敗しました。ステータス: ${signedUrlResponse.status}`);
             }
-            return response.blob();
+
+            // バックエンドから返されたJSONをパースしてURLを取り出す
+            const data = await signedUrlResponse.json();
+            const r2SignedUrl = data.url;
+
+            // ステップ2: 取得した署名付きURLを使って、R2から直接ファイルをダウンロードする
+            const fileResponse = await fetch(r2SignedUrl);
+
+            if (!fileResponse.ok) {
+                throw new Error(`ファイルのダウンロードに失敗しました。ステータス: ${fileResponse.status}`);
+            }
+            
+            return fileResponse.blob();
+
         } catch (error) {
             console.error('ダウンロードエラー:', error);
             throw error;

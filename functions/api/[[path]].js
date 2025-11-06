@@ -45,7 +45,6 @@ async function handleDownload(context) {
   const { request, env } = context;
   const url = new URL(request.url);
   
-  // パスからファイル名を取得
   const filename = url.pathname.substring('/api/'.length);
   if (!filename) {
     return new Response('Filename is required.', { status: 400 });
@@ -58,15 +57,18 @@ async function handleDownload(context) {
   });
   const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
 
-  // CORSヘッダーを追加
+  // 署名付きURLをJSON形式でレスポンスボディに含める
+  const responseBody = JSON.stringify({ url: signedUrl });
+
+  // ヘッダーをJSON用に変更
   const headers = {
-    'Location': signedUrl,
+    'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*', // すべてのオリジンを許可
-    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
   };
 
-  return new Response(null, {
-    status: 302,
+  // 200 OKステータスでJSONを返す
+  return new Response(responseBody, {
+    status: 200,
     headers: headers,
   });
 }
