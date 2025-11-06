@@ -58,7 +58,8 @@ export async function onRequest(context) {
  */
 async function handleListFiles(context, r2) {
   const command = new ListObjectsV2Command({
-    Bucket: context.env.R2_BUCKET_NAME,
+    // 【修正箇所】バケット名を新しい環境変数から取得
+    Bucket: context.env.R2_BUCKET_NAME_STRING,
   });
   const response = await r2.send(command);
   
@@ -84,7 +85,8 @@ async function handleGenerateUploadUrl(context, r2, body) {
   }
 
   const command = new PutObjectCommand({
-    Bucket: context.env.R2_BUCKET_NAME,
+    // 【修正箇所】バケット名を新しい環境変数から取得
+    Bucket: context.env.R2_BUCKET_NAME_STRING,
     Key: filename,
     ContentType: contentType,
   });
@@ -107,7 +109,8 @@ async function handleGenerateDownloadUrl(context, r2, body) {
   }
 
   const command = new GetObjectCommand({
-    Bucket: context.env.R2_BUCKET_NAME,
+    // 【修正箇所】バケット名を新しい環境変数から取得
+    Bucket: context.env.R2_BUCKET_NAME_STRING,
     Key: filename,
   });
   
