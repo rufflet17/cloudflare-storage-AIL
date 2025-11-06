@@ -18,7 +18,7 @@
         #file-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #e4e4e7; }
         #file-list li:last-child { border-bottom: none; }
         .file-actions button { width: auto; padding: 0.3rem 0.8rem; font-size: 0.9rem; margin-left: 0.5rem; }
-        #status { margin-top: 1rem; font-weight: bold; word-break: break-all; }
+        #status { margin-top: 1rem; font-weight: bold; color: red; word-break: break-all; } /* エラーが見やすいように赤色に */
         .link-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 10px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #d4d4d8; }
         .link-popup input { width: 100%; margin-bottom: 1rem; }
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; }
@@ -27,13 +27,15 @@
 <body>
     <div class="container">
         <h1>R2 File Manager</h1>
-        <div id="auth-section" class="auth-section">
+        <!-- --- 変更点 --- : 認証セクションをデフォルトで非表示に -->
+        <div id="auth-section" class="auth-section hidden">
             <p>アクセスするにはパスワードを入力してください。</p>
             <input type="password" id="password-input" placeholder="Password">
             <button id="login-button">ログイン</button>
             <p id="auth-status" style="color: red;"></p>
         </div>
-        <div id="main-section" class="main-section hidden">
+        <!-- --- 変更点 --- : メインセクションをデフォルトで表示に -->
+        <div id="main-section" class="main-section">
             <div>
                 <h2>ファイルをアップロード</h2>
                 <input type="file" id="file-input">
@@ -56,11 +58,8 @@
     </div>
 
     <script>
-        const authSection = document.getElementById('auth-section');
+        // --- 変更点 --- : 認証関連の要素取得を削除
         const mainSection = document.getElementById('main-section');
-        const passwordInput = document.getElementById('password-input');
-        const loginButton = document.getElementById('login-button');
-        const authStatus = document.getElementById('auth-status');
         const fileInput = document.getElementById('file-input');
         const uploadButton = document.getElementById('upload-button');
         const statusDiv = document.getElementById('status');
@@ -72,54 +71,28 @@
         const copyLinkButton = document.getElementById('copy-link-button');
         const closePopupButton = document.getElementById('close-popup-button');
         
-        let authToken = sessionStorage.getItem('authToken');
-
-        // 認証チェック
-        if (authToken) {
-            authSection.classList.add('hidden');
-            mainSection.classList.remove('hidden');
-            fetchFileList();
-        }
+        // --- 変更点 --- : 認証チェックと authToken を削除し、ページ読み込み時に直接ファイルリストを取得
+        fetchFileList();
 
         // --- API呼び出しの共通関数 ---
         async function apiCall(endpoint, body) {
             const response = await fetch(`/api/${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: authToken, ...body })
+                // --- 変更点 --- : リクエストボディからパスワードを削除
+                body: JSON.stringify(body) 
             });
-            if (response.status === 403) { // 認証エラー
-                sessionStorage.removeItem('authToken');
-                location.reload();
-                throw new Error('認証に失敗しました。');
-            }
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`APIエラー: ${errorText}`);
+                // --- 変更点 --- : バックエンドからのエラーメッセージをそのまま投げる
+                throw new Error(`APIエラー (ステータス: ${response.status}): ${errorText}`);
             }
             return response.json();
         }
         
         // --- イベントリスナー ---
-        loginButton.addEventListener('click', async () => {
-            authToken = passwordInput.value;
-            if (!authToken) {
-                authStatus.textContent = 'パスワードを入力してください。';
-                return;
-            }
-            try {
-                await apiCall('list-files', {}); // 認証テスト
-                sessionStorage.setItem('authToken', authToken);
-                authSection.classList.add('hidden');
-                mainSection.classList.remove('hidden');
-                authStatus.textContent = '';
-                await fetchFileList();
-            } catch {
-                authStatus.textContent = '認証に失敗しました。';
-                sessionStorage.removeItem('authToken');
-            }
-        });
-        
+        // --- 変更点 --- : ログインボタンのイベントリスナーを削除
+
         fileInput.addEventListener('change', () => uploadButton.disabled = fileInput.files.length === 0);
         uploadButton.addEventListener('click', handleUpload);
         refreshButton.addEventListener('click', fetchFileList);
@@ -136,7 +109,6 @@
 
         // --- 関数 ---
         async function fetchFileList() {
-            if (!authToken) return;
             statusDiv.textContent = 'ファイルリストを読み込み中...';
             fileListUl.innerHTML = '';
             try {
@@ -161,7 +133,8 @@
                 }
                 statusDiv.textContent = '';
             } catch (error) {
-                statusDiv.textContent = error.message;
+                // --- 変更点 --- : エラーオブジェクト全体を表示して詳細な原因を提示
+                statusDiv.textContent = `エラー: ${error}`;
             }
         }
 
@@ -174,12 +147,19 @@
                 const { url } = await apiCall('generate-upload-url', { filename: file.name, contentType: file.type || 'application/octet-stream' });
                 statusDiv.textContent = 'ファイルをアップロード中...';
                 const uploadResponse = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
-                if (!uploadResponse.ok) throw new Error('アップロードに失敗しました。');
+                
+                // --- 変更点 --- : アップロード失敗時にR2からのエラーレスポンスを詳しく表示
+                if (!uploadResponse.ok) {
+                    const errorText = await uploadResponse.text();
+                    throw new Error(`アップロードに失敗しました。ステータス: ${uploadResponse.status}, R2からの応答: ${errorText}`);
+                }
+
                 statusDiv.textContent = 'アップロードが完了しました！';
                 fileInput.value = '';
                 await fetchFileList();
             } catch (error) {
-                statusDiv.textContent = error.message;
+                // --- 変更点 --- : エラーオブジェクト全体を表示して詳細な原因を提示
+                statusDiv.textContent = `エラー: ${error}`;
             } finally {
                 uploadButton.disabled = false;
             }
@@ -194,7 +174,8 @@
                 linkPopup.classList.remove('hidden');
                 statusDiv.textContent = '';
             } catch (error) {
-                statusDiv.textContent = error.message;
+                // --- 変更点 --- : エラーオブジェクト全体を表示して詳細な原因を提示
+                statusDiv.textContent = `エラー: ${error}`;
             }
         }
     </script>

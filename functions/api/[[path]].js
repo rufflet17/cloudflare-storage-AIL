@@ -19,12 +19,17 @@ export async function onRequest(context) {
     }
 
     const body = await request.json();
+    
+    // --- 変更点 ---
+    // 認証処理をコメントアウトして無効化
+    /*
     const { password } = body;
 
     // --- 認証 ---
     if (!password || password !== env.AUTH_PASSWORD) {
       return new Response('Unauthorized', { status: 403 });
     }
+    */
     
     // --- R2クライアントの初期化 (Cloudflare Workers環境向け) ---
     const R2 = new S3Client({
@@ -52,7 +57,9 @@ export async function onRequest(context) {
     }
   } catch (error) {
     console.error(error);
-    return new Response(error.message, { status: 500 });
+    // --- 変更点 --- : エラーメッセージに加えて、スタックトレースも返すことでより詳細な情報を提供
+    const errorMessage = error.stack || error.message;
+    return new Response(errorMessage, { status: 500 });
   }
 }
 
@@ -71,7 +78,7 @@ async function handleListFiles(env, r2) {
 /** アップロード用の署名付きURLを生成 */
 async function handleGenerateUploadUrl(env, r2, body) {
   const { filename, contentType } = body;
-  if (!filename || !contentType) return new Response('Bad Request', { status: 400 });
+  if (!filename || !contentType) return new Response('Bad Request: filename and contentType are required.', { status: 400 });
   const command = new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: filename, ContentType: contentType });
   const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
   return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
@@ -80,7 +87,7 @@ async function handleGenerateUploadUrl(env, r2, body) {
 /** ダウンロード用の署名付きURLを生成 */
 async function handleGenerateDownloadUrl(env, r2, body) {
   const { filename } = body;
-  if (!filename) return new Response('Bad Request', { status: 400 });
+  if (!filename) return new Response('Bad Request: filename is required.', { status: 400 });
   const command = new GetObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: filename });
   const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
   return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
