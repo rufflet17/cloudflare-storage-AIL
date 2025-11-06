@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.925.0",
-    "@aws-sdk/s3-request-presigner": "^3.925.0"
+    "@aws-sdk/s3-request-presigner": "^3.925.0",
+    "fast-xml-parser": "^5.3.1"
   }
 }
