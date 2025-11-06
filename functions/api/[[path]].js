@@ -3,6 +3,14 @@
 import { S3Client, ListObjectsV2Command, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+// ▼▼▼【ここから追加】▼▼▼
+// Cloudflare Workers環境でAWS SDKを動作させるために必要なライブラリ
+import { XMLParser } from "fast-xml-parser";
+import { FetchHttpHandler } from "@smithy/fetch-http-handler";
+import { parseUrl } from "@aws-sdk/url-parser-native";
+// ▲▲▲【ここまで追加】▲▲▲
+
+
 /**
  * 全てのAPIリクエストを処理するエントリーポイント
  */
@@ -22,6 +30,8 @@ export async function onRequest(context) {
     }
     
     // --- R2クライアントの初期化 ---
+    // ▼▼▼【ここを修正】▼▼▼
+    // Workers環境で動作するように、リクエストハンドラとXMLパーサーを明示的に指定します。
     const R2 = new S3Client({
       region: "auto",
       endpoint: `https://${context.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -29,7 +39,15 @@ export async function onRequest(context) {
         accessKeyId: context.env.R2_ACCESS_KEY_ID,
         secretAccessKey: context.env.R2_SECRET_ACCESS_KEY,
       },
+      // Workers環境用の設定
+      requestHandler: new FetchHttpHandler(),
+      urlParser: parseUrl,
+      xmlParser: new XMLParser({
+        ignoreAttributes: false, // 属性を無視しない
+        removeNSPrefix: true,    // XMLの名前空間プレフィックスを削除
+      }),
     });
+    // ▲▲▲【ここまで修正】▲▲▲
 
     // --- アクションに応じて処理を振り分け ---
     switch (action) {
@@ -48,7 +66,8 @@ export async function onRequest(context) {
 
   } catch (error) {
     console.error(error);
-    return new Response('Internal Server Error', { status: 500 });
+    // エラーの詳細をレスポンスに含めるとデバッグに役立ちます
+    return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
   }
 }
 
@@ -58,7 +77,6 @@ export async function onRequest(context) {
  */
 async function handleListFiles(context, r2) {
   const command = new ListObjectsV2Command({
-    // 【修正箇所】バケット名を新しい環境変数から取得
     Bucket: context.env.R2_BUCKET_NAME_STRING,
   });
   const response = await r2.send(command);
@@ -85,7 +103,6 @@ async function handleGenerateUploadUrl(context, r2, body) {
   }
 
   const command = new PutObjectCommand({
-    // 【修正箇所】バケット名を新しい環境変数から取得
     Bucket: context.env.R2_BUCKET_NAME_STRING,
     Key: filename,
     ContentType: contentType,
@@ -109,7 +126,6 @@ async function handleGenerateDownloadUrl(context, r2, body) {
   }
 
   const command = new GetObjectCommand({
-    // 【修正箇所】バケット名を新しい環境変数から取得
     Bucket: context.env.R2_BUCKET_NAME_STRING,
     Key: filename,
   });
