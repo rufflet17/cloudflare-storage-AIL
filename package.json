@@ -7,12 +7,12 @@
     "build": "echo 'Build step for Functions'"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.583.0",
-    "@aws-sdk/s3-request-presigner": "^3.583.0",
-    "@smithy/fetch-http-handler": "^3.0.0",
-    "fast-xml-parser": "^5.3.1"
+    "@aws-sdk/client-s3": "3.485.0",
+    "@aws-sdk/s3-request-presigner": "3.485.0",
+    "@smithy/fetch-http-handler": "3.0.0",
+    "fast-xml-parser": "4.3.6"
   },
   "devDependencies": {
-    "wrangler": "^3.57.0"
+    "wrangler": "^4.4.0"
   }
 }

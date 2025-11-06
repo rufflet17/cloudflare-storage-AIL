@@ -12,6 +12,19 @@ import { XMLParser } from "fast-xml-parser";
 export async function onRequest(context) {
   try {
     const { request, env, params } = context;
+
+    // --- 安全なデバッグログ ---
+    console.log("--- START onRequest ---");
+    console.log("env bindings check:");
+    // R2_BUCKET_NAMEはオブジェクトなので、`hasOwnProperty`ではtrueにならない場合があるため、`in`演算子でチェック
+    console.log("  R2_BUCKET_NAME object exists:", "R2_BUCKET_NAME" in env); 
+    console.log("  R2_BUCKET_NAME_STRING exists:", env.hasOwnProperty("R2_BUCKET_NAME_STRING"));
+    console.log("  R2_ACCOUNT_ID exists:", env.hasOwnProperty("R2_ACCOUNT_ID"));
+    console.log("  R2_ACCESS_KEY_ID exists:", env.hasOwnProperty("R2_ACCESS_KEY_ID"));
+    console.log("  R2_SECRET_ACCESS_KEY exists:", env.hasOwnProperty("R2_SECRET_ACCESS_KEY"));
+    console.log("-----------------------");
+    // --- デバッグログここまで ---
+
     const action = params.path[params.path.length - 1];
     
     if (request.method !== 'POST') {
@@ -58,7 +71,7 @@ export async function onRequest(context) {
 
 /** ファイル一覧を取得 */
 async function handleListFiles(env, r2) {
-  const command = new ListObjectsV2Command({ Bucket: env.R2_BUCKET_NAME });
+  const command = new ListObjectsV2Command({ Bucket: env.R2_BUCKET_NAME_STRING });
   const response = await r2.send(command);
   const files = (response.Contents || []).map(file => ({
     key: file.Key,
@@ -72,7 +85,7 @@ async function handleListFiles(env, r2) {
 async function handleGenerateUploadUrl(env, r2, body) {
   const { filename, contentType } = body;
   if (!filename || !contentType) return new Response('Bad Request: filename and contentType are required.', { status: 400 });
-  const command = new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: filename, ContentType: contentType });
+  const command = new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME_STRING, Key: filename, ContentType: contentType });
   const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
   return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -81,7 +94,7 @@ async function handleGenerateUploadUrl(env, r2, body) {
 async function handleGenerateDownloadUrl(env, r2, body) {
   const { filename } = body;
   if (!filename) return new Response('Bad Request: filename is required.', { status: 400 });
-  const command = new GetObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: filename });
+  const command = new GetObjectCommand({ Bucket: env.R2_BUCKET_NAME_STRING, Key: filename });
   const url = await getSignedUrl(r2, command, { expiresIn: 3600 });
   return new Response(JSON.stringify({ url }), { headers: { 'Content-Type': 'application/json' } });
 }

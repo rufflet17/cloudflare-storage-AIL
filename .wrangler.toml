@@ -1,0 +1,9 @@
+name = "cloudflare-r2-file-manager"
+pages_build_output_dir = "./public"
+# --- 変更点 ---
+compatibility_date = "2025-11-06"
+# --- 変更点ここまで ---
+
+[[r2_buckets]]
+binding = "R2_BUCKET_NAME"
+bucket_name = "booth"
