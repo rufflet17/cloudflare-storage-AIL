@@ -3,7 +3,6 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Cloudflare Workers環境でAWS SDKを動作させるための必須ライブラリ
 import { FetchHttpHandler } from "@smithy/fetch-http-handler";
-// --- 変更点 --- : Workers環境で動作するXMLパーサーをインポート
 import { XMLParser } from "fast-xml-parser";
 
 /**
@@ -12,19 +11,6 @@ import { XMLParser } from "fast-xml-parser";
 export async function onRequest(context) {
   try {
     const { request, env, params } = context;
-
-    // --- 安全なデバッグログ ---
-    console.log("--- START onRequest ---");
-    console.log("env bindings check:");
-    // R2_BUCKET_NAMEはオブジェクトなので、`hasOwnProperty`ではtrueにならない場合があるため、`in`演算子でチェック
-    console.log("  R2_BUCKET_NAME object exists:", "R2_BUCKET_NAME" in env); 
-    console.log("  R2_BUCKET_NAME_STRING exists:", env.hasOwnProperty("R2_BUCKET_NAME_STRING"));
-    console.log("  R2_ACCOUNT_ID exists:", env.hasOwnProperty("R2_ACCOUNT_ID"));
-    console.log("  R2_ACCESS_KEY_ID exists:", env.hasOwnProperty("R2_ACCESS_KEY_ID"));
-    console.log("  R2_SECRET_ACCESS_KEY exists:", env.hasOwnProperty("R2_SECRET_ACCESS_KEY"));
-    console.log("-----------------------");
-    // --- デバッグログここまで ---
-
     const action = params.path[params.path.length - 1];
     
     if (request.method !== 'POST') {
@@ -32,11 +18,22 @@ export async function onRequest(context) {
     }
 
     const body = await request.json();
+
+    // --- 変更点：環境変数名を AUTH_PASSWORD に修正 ---
+    const secretPassword = env.AUTH_PASSWORD;
+    if (!secretPassword) {
+      // サーバー側の設定ミス
+      return new Response('Password not configured.', { status: 500 });
+    }
+    if (body.password !== secretPassword) {
+      // パスワード不一致
+      return new Response('Unauthorized.', { status: 401 });
+    }
+    // --- 変更点ここまで ---
     
-    // --- 変更点 --- : インポートしたXMLパーサーのインスタンスを作成
     const xmlParser = new XMLParser();
     
-    // --- R2クライアントの初期化 (Cloudflare Workers環境向け) ---
+    // R2クライアントの初期化 (Cloudflare Workers環境向け)
     const R2 = new S3Client({
       region: "auto",
       endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -45,13 +42,12 @@ export async function onRequest(context) {
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
       requestHandler: new FetchHttpHandler(),
-      // --- 変更点 --- : SDKに、ブラウザ互換でないデフォルトの代わりに、このXMLパーサーを使用するよう指示
       xmlParser: {
         parse: xmlParser.parse,
       },
     });
 
-    // --- アクションに応じて処理を振り分け ---
+    // アクションに応じて処理を振り分け
     switch (action) {
       case 'list-files':
         return await handleListFiles(env, R2);
