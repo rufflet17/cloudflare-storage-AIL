@@ -2,3 +2,4 @@ cors-policy.json
 node_modules
 package-lock.json
 .dev.vars
+.wrangler
