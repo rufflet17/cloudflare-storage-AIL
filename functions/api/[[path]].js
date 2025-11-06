@@ -45,48 +45,30 @@ async function handleDownload(context) {
   const { request, env } = context;
   const url = new URL(request.url);
   
+  // パスからファイル名を取得
   const filename = url.pathname.substring('/api/'.length);
   if (!filename) {
     return new Response('Filename is required.', { status: 400 });
   }
 
   const R2 = createR2Client(env);
-  
-  try {
-    const command = new GetObjectCommand({
-      Bucket: env.R2_BUCKET_NAME_STRING,
-      Key: decodeURIComponent(filename),
-    });
-    
-    // R2から直接オブジェクトを取得
-    const object = await R2.send(command);
+  const command = new GetObjectCommand({
+    Bucket: env.R2_BUCKET_NAME_STRING,
+    Key: decodeURIComponent(filename),
+  });
+  const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
 
-    // R2からのレスポンスヘッダーを元に、クライアントへのレスポンスヘッダーを作成
-    const headers = {
-      // フロントエンドからのアクセスを許可するためにCORSヘッダーを追加
-      'Access-Control-Allow-Origin': '*', // または 'http://127.0.0.1:8788' のように конкретно 指定
-      
-      // R2から取得したファイル情報をヘッダーに設定
-      'Content-Type': object.ContentType,
-      'Content-Length': object.ContentLength.toString(),
-      'ETag': object.ETag,
-      'Last-Modified': object.LastModified.toUTCString(),
-    };
+  // CORSヘッダーを追加
+  const headers = {
+    'Location': signedUrl,
+    'Access-Control-Allow-Origin': '*', // すべてのオリジンを許可
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  };
 
-    // R2から取得したファイル本体(ReadableStream)をレスポンスとして返す
-    return new Response(object.Body, {
-      status: 200,
-      headers: headers,
-    });
-
-  } catch (e) {
-    // fast-xml-parserが投げる可能性のあるエラーを考慮
-    if (e.name === 'NoSuchKey' || (e.message && e.message.includes("The specified key does not exist"))) {
-      return new Response('File not found.', { status: 404 });
-    }
-    console.error(e);
-    return new Response('An error occurred while fetching the file.', { status: 500 });
-  }
+  return new Response(null, {
+    status: 302,
+    headers: headers,
+  });
 }
 
 /**
