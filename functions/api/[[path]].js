@@ -48,7 +48,7 @@ async function handleDownload(context) {
   // パスからファイル名を取得
   const filename = url.pathname.substring('/api/'.length);
   if (!filename) {
-    return new Response(JSON.stringify({ error: 'Filename is required.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    return new Response('Filename is required.', { status: 400 });
   }
 
   const R2 = createR2Client(env);
@@ -56,18 +56,18 @@ async function handleDownload(context) {
     Bucket: env.R2_BUCKET_NAME_STRING,
     Key: decodeURIComponent(filename),
   });
-  
-  // 署名付きURLを生成
-  const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 }); // 有効期限を短く設定
+  const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
 
-  // URLをJSON形式で返す
-  return new Response(JSON.stringify({ url: signedUrl }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      // APIエンドポイント自体のCORS設定
-      'Access-Control-Allow-Origin': '*', // または特定のオリジン
-    },
+  // CORSヘッダーを追加
+  const headers = {
+    'Location': signedUrl,
+    'Access-Control-Allow-Origin': '*', // すべてのオリジンを許可
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  };
+
+  return new Response(null, {
+    status: 302,
+    headers: headers,
   });
 }
 
