@@ -1,8 +1,3 @@
-### 修正後のフロントエンドコード全体
-
-以下は、上記の修正を適用した `public/index.html` ファイルの全体です。これをコピーして既存のファイルを完全に置き換えてください。
-
-```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -191,7 +186,7 @@
         
         function generateShareLink(filename) {
             // ベースURLを固定の本番サイトURLに変更
-            const productionUrl = 'https://cloudflare-storage-ail.pages.dev';
+            const productionUrl = 'https://download-link.pages.dev';
             const permanentLink = `${productionUrl}/api/download/${encodeURIComponent(filename)}`;
             
             shareableLinkInput.value = permanentLink;
