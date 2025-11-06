@@ -18,7 +18,7 @@
         #file-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #e4e4e7; }
         #file-list li:last-child { border-bottom: none; }
         .file-actions button { width: auto; padding: 0.3rem 0.8rem; font-size: 0.9rem; margin-left: 0.5rem; }
-        #status { margin-top: 1rem; font-weight: bold; color: red; word-break: break-all; } /* エラーが見やすいように赤色に */
+        #status { margin-top: 1rem; font-weight: bold; color: red; word-break: break-all; }
         .link-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 10px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #d4d4d8; }
         .link-popup input { width: 100%; margin-bottom: 1rem; }
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; }
@@ -27,14 +27,12 @@
 <body>
     <div class="container">
         <h1>R2 File Manager</h1>
-        <!-- --- 変更点 --- : 認証セクションをデフォルトで表示に -->
         <div id="auth-section" class="auth-section">
             <p>アクセスするにはパスワードを入力してください。</p>
             <input type="password" id="password-input" placeholder="Password">
             <button id="login-button">ログイン</button>
             <p id="auth-status" style="color: red;"></p>
         </div>
-        <!-- --- 変更点 --- : メインセクションをデフォルトで非表示に -->
         <div id="main-section" class="main-section hidden">
             <div>
                 <h2>ファイルをアップロード</h2>
@@ -51,14 +49,14 @@
     </div>
     <div id="popup-overlay" class="overlay hidden"></div>
     <div id="link-popup" class="link-popup hidden">
-        <h3>ダウンロードリンク (1時間有効)</h3>
+        <!-- --- 変更点 --- : タイトルを永続リンクに変更 -->
+        <h3>永続ダウンロードリンク</h3>
         <input type="text" id="shareable-link" readonly>
         <button id="copy-link-button">クリップボードにコピー</button>
         <button id="close-popup-button">閉じる</button>
     </div>
 
     <script>
-        // --- 変更点 --- : 認証関連の要素を取得
         const authSection = document.getElementById('auth-section');
         const passwordInput = document.getElementById('password-input');
         const loginButton = document.getElementById('login-button');
@@ -76,26 +74,25 @@
         const copyLinkButton = document.getElementById('copy-link-button');
         const closePopupButton = document.getElementById('close-popup-button');
         
-        // --- 変更点 --- : パスワードを保持する変数を追加
         let authToken = null;
 
-        // --- 変更点 --- : ページ読み込み時のファイルリスト取得を削除
-
         // --- API呼び出しの共通関数 ---
-        async function apiCall(endpoint, body) {
-            // --- 変更点 --- : リクエストボディにパスワードを追加
-            const requestBody = { ...body, password: authToken };
+        // --- 変更点 --- : actionを引数に取り、エンドポイントを/api/actionsに統一
+        async function apiCall(action, body) {
+            const requestBody = { ...body, password: authToken, action: action };
 
-            const response = await fetch(`/api/${endpoint}`, {
+            const response = await fetch(`/api/actions`, { // エンドポイントを/api/actionsに固定
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody) 
             });
             if (!response.ok) {
                 const errorText = await response.text();
-                // 401 Unauthorizedの場合は特別なメッセージを表示
                 if (response.status === 401) {
                     throw new Error('パスワードが間違っています。');
+                }
+                if (response.status === 403) { // 本番環境ブロックのエラー
+                    throw new Error('この環境からのAPIアクセスはブロックされています。');
                 }
                 throw new Error(`APIエラー (ステータス: ${response.status}): ${errorText}`);
             }
@@ -103,12 +100,9 @@
         }
         
         // --- イベントリスナー ---
-        // --- 変更点 --- : ログインボタンのイベントリスナーを追加
         loginButton.addEventListener('click', handleLogin);
         passwordInput.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') {
-                handleLogin();
-            }
+            if (event.key === 'Enter') handleLogin();
         });
 
         fileInput.addEventListener('change', () => uploadButton.disabled = fileInput.files.length === 0);
@@ -126,34 +120,23 @@
         });
 
         // --- 関数 ---
-        // --- 変更点 --- : ログイン処理関数を追加
         async function handleLogin() {
             const password = passwordInput.value;
             if (!password) {
                 authStatus.textContent = 'パスワードを入力してください。';
                 return;
             }
-            
             authStatus.textContent = '認証中...';
             loginButton.disabled = true;
-            
-            // 認証トークンを一時的に設定してAPIを試す
             authToken = password;
-
             try {
-                // パスワードが正しいか確認するため、ファイルリスト取得を試行
+                // --- 変更点 --- : apiCallの呼び出し方を変更
                 await apiCall('list-files', {});
-                
-                // 成功したらUIを切り替え
                 authSection.classList.add('hidden');
                 mainSection.classList.remove('hidden');
-                
-                // 最初のファイルリストを読み込む
                 fetchFileList();
-
             } catch (error) {
                 authStatus.textContent = `エラー: ${error.message}`;
-                // 失敗したらトークンをリセット
                 authToken = null;
             } finally {
                 loginButton.disabled = false;
@@ -164,6 +147,7 @@
             statusDiv.textContent = 'ファイルリストを読み込み中...';
             fileListUl.innerHTML = '';
             try {
+                // --- 変更点 --- : apiCallの呼び出し方を変更
                 const { files } = await apiCall('list-files', {});
                 if (files.length === 0) {
                     fileListUl.innerHTML = '<li>ファイルはありません。</li>';
@@ -195,6 +179,7 @@
             statusDiv.textContent = 'アップロード用URLをリクエスト中...';
             uploadButton.disabled = true;
             try {
+                // --- 変更点 --- : apiCallの呼び出し方を変更
                 const { url } = await apiCall('generate-upload-url', { filename: file.name, contentType: file.type || 'application/octet-stream' });
                 statusDiv.textContent = 'ファイルをアップロード中...';
                 const uploadResponse = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
@@ -214,17 +199,16 @@
             }
         }
         
-        async function generateShareLink(filename) {
-            statusDiv.textContent = `「${filename}」の共有リンクを生成中...`;
-            try {
-                const { url } = await apiCall('generate-download-url', { filename });
-                shareableLinkInput.value = url;
-                popupOverlay.classList.remove('hidden');
-                linkPopup.classList.remove('hidden');
-                statusDiv.textContent = '';
-            } catch (error) {
-                statusDiv.textContent = `エラー: ${error.message}`;
-            }
+        // --- 変更点 --- : APIを呼び出さず、永続リンクを直接生成する関数に変更
+        function generateShareLink(filename) {
+            // URLの生成: 現在のページのオリジン + /api/download/ + ファイル名
+            // encodeURIComponentでファイル名に特殊文字が含まれていても安全にURLにできる
+            const permanentLink = `${window.location.origin}/api/download/${encodeURIComponent(filename)}`;
+            
+            shareableLinkInput.value = permanentLink;
+            popupOverlay.classList.remove('hidden');
+            linkPopup.classList.remove('hidden');
+            statusDiv.textContent = '';
         }
     </script>
 </body>
