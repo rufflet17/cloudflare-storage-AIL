@@ -1,19 +1,17 @@
 {
-  "name": "cloud_storage_ailust",
+  "name": "cloudflare-r2-file-manager",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "deploy": "wrangler pages deploy ./public"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.925.0",
-    "@aws-sdk/s3-request-presigner": "^3.925.0",
-    "@aws-sdk/url-parser-native": "^3.12.0",
-    "@smithy/fetch-http-handler": "^5.3.5",
-    "fast-xml-parser": "^5.3.1"
+    "@aws-sdk/client-s3": "^3.583.0",
+    "@aws-sdk/s3-request-presigner": "^3.583.0",
+    "@smithy/fetch-http-handler": "^3.0.0",
+    "@aws-sdk/url-parser-native": "^3.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.57.0"
   }
 }
