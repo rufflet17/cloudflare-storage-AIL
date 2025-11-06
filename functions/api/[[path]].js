@@ -11,6 +11,13 @@ import { XMLParser } from "fast-xml-parser";
 export async function onRequest(context) {
   try {
     const { request, env, params } = context;
+
+    // --- 変更点：本番環境からのアクセスをブロック ---
+    if (env.CF_PAGES_BRANCH) {
+      return new Response('Access from production environment is blocked.', { status: 403 });
+    }
+    // --- 変更点ここまで ---
+
     const action = params.path[params.path.length - 1];
     
     if (request.method !== 'POST') {
@@ -19,21 +26,18 @@ export async function onRequest(context) {
 
     const body = await request.json();
 
-    // --- 変更点：環境変数名を AUTH_PASSWORD に修正 ---
+    // パスワード認証
     const secretPassword = env.AUTH_PASSWORD;
     if (!secretPassword) {
-      // サーバー側の設定ミス
       return new Response('Password not configured.', { status: 500 });
     }
     if (body.password !== secretPassword) {
-      // パスワード不一致
       return new Response('Unauthorized.', { status: 401 });
     }
-    // --- 変更点ここまで ---
     
     const xmlParser = new XMLParser();
     
-    // R2クライアントの初期化 (Cloudflare Workers環境向け)
+    // R2クライアントの初期化
     const R2 = new S3Client({
       region: "auto",
       endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
