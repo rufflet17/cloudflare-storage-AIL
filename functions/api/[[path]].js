@@ -45,11 +45,16 @@ async function handleDownload(context) {
   });
   const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
 
+  // CORSヘッダーを追加
+  const headers = {
+    'Location': signedUrl,
+    'Access-Control-Allow-Origin': '*', // すべてのオリジンを許可
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  };
+
   return new Response(null, {
     status: 302,
-    headers: {
-      'Location': signedUrl,
-    },
+    headers: headers,
   });
 }
 
