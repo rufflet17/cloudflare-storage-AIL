@@ -5,18 +5,22 @@ import { XMLParser } from "fast-xml-parser";
 
 export async function onRequest(context) {
   try {
-    const { request } = context;
+    const { request, env } = context;
+    const url = new URL(request.url);
 
-    // メソッドベースのルーティング
-    if (request.method === 'GET') {
+    // --- ルーティング：パスとメソッドで処理を分岐 ---
+    // 1. ダウンロードリンクへのGETリクエストを処理
+    if (url.pathname.startsWith('/api/download/') && request.method === 'GET') {
       return handleDownload(context);
     }
 
+    // 2. それ以外のAPIへのPOSTリクエストを処理
     if (request.method === 'POST') {
       return handleActions(context);
     }
     
-    return new Response('Method Not Allowed', { status: 405 });
+    // 上記以外は404 Not Found
+    return new Response('Not Found', { status: 404 });
 
   } catch (error) {
     console.error(error);
@@ -26,14 +30,14 @@ export async function onRequest(context) {
 }
 
 /**
- * ダウンロード処理 (GET /api/*)
+ * ダウンロード処理 (GET /api/download/*)
  */
 async function handleDownload(context) {
   const { request, env } = context;
   const url = new URL(request.url);
   
   // パスからファイル名を取得
-  const filename = url.pathname.substring('/api/'.length);
+  const filename = url.pathname.substring('/api/download/'.length);
   if (!filename) {
     return new Response('Filename is required.', { status: 400 });
   }
@@ -41,7 +45,7 @@ async function handleDownload(context) {
   const R2 = createR2Client(env);
   const command = new GetObjectCommand({
     Bucket: env.R2_BUCKET_NAME_STRING,
-    Key: decodeURIComponent(filename),
+    Key: decodeURIComponent(filename), // URLエンコードされたファイル名をデコード
   });
   const signedUrl = await getSignedUrl(R2, command, { expiresIn: 30 });
 
@@ -82,9 +86,12 @@ async function handleActions(context) {
       case 'generate-upload-url':
         return await handleGenerateUploadUrl(env, R2, body);
       default:
+        // フロントエンドは/api/actionsにPOSTするので、ここは実質的に使われない
         return new Response('Action Not Found', { status: 404 });
     }
 }
+
+// --- 共通ヘルパー関数と個別のアクションハンドラ ---
 
 /** S3クライアントを初期化する共通関数 */
 function createR2Client(env) {

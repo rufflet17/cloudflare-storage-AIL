@@ -187,7 +187,7 @@
         function generateShareLink(filename) {
             // ベースURLを固定の本番サイトURLに変更
             const productionUrl = 'https://download.pages.dev';
-            const permanentLink = `${productionUrl}/api/${encodeURIComponent(filename)}`;
+            const permanentLink = `${productionUrl}/api/download/${encodeURIComponent(filename)}`;
             
             shareableLinkInput.value = permanentLink;
             popupOverlay.classList.remove('hidden');
